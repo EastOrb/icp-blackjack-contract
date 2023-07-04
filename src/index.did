@@ -1,0 +1,14 @@
+type Budget = record { amount : nat32 };
+type _AzleResult = variant { Ok : text; Err : text };
+type _AzleResult_1 = variant { Ok : Budget; Err : text };
+type _AzleResult_2 = variant { Ok : nat32; Err : text };
+service : () -> {
+  Hit : () -> (_AzleResult);
+  Stand : () -> (_AzleResult);
+  addToUserBudget : (nat32) -> (_AzleResult_1);
+  clearDecks : () -> ();
+  getUserBudget : () -> (_AzleResult_2) query;
+  giveCards : (nat32, nat32) -> (_AzleResult);
+  startGame : (nat32) -> (_AzleResult);
+  viewDecks : () -> (_AzleResult) query;
+}
