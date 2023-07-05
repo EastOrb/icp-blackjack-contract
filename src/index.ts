@@ -1,287 +1,212 @@
-import { $query, $update, Record, StableBTreeMap, Result, nat32 } from 'azle'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidv4 } from 'uuid';
 
-const suits: string[] = ["Spades", "Hearts", "Clubs", "Diamonds"]
+const suits: string[] = ["Spades", "Hearts", "Clubs", "Diamonds"];
 
-const cards: string[] = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+const cards: string[] = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 
-interface ValuesType {
-    [key: string]: nat32;
+interface Deck {
+  id: string;
+  card: string;
+  suit: string;
+  value: number;
 }
 
-const cards_values: ValuesType = {
-    "A": 11,
-    "2": 2,
-    "3": 3,
-    "4": 4,
-    "5": 5,
-    "6": 6,
-    "7": 7,
-    "8": 8,
-    "9": 9,
-    "10": 10,
-    "J": 10,
-    "Q": 10,
-    "K": 10
+type Budget = {
+  amount: number;
+};
+
+const userStorage = new Map<string, Deck>();
+const dealerStorage = new Map<string, Deck>();
+
+let budget: Budget = { amount: 0 };
+let game_bet: Budget = { amount: 0 };
+
+export function addToUserBudget(amount: number): Budget {
+  budget.amount += amount;
+  return budget;
 }
 
-type Deck = Record<{
-    id: string;
-    card: string;
-    suit: string;
-    value: nat32;
-}>
-
-const userStorage = new StableBTreeMap<string, Deck>(0, 44, 100);
-
-const dealerStorage = new StableBTreeMap<string, Deck>(1, 44, 1_00);
-
-type Budget = Record<{
-    amount: nat32;
-}>
-
-let budget: Budget = { amount: 0 }
-
-let game_bet: Budget = { amount: 0 }
-
-$update;
-export function addToUserBudget(amount: nat32): Result<Budget, string> {
-    budget.amount = (budget.amount + amount)
-    
-    return Result.Ok(budget)
+export function getUserBudget(): number {
+  return budget.amount;
 }
 
-$query;
-export function getUserBudget(): Result<nat32, string> {
-    return Result.Ok(budget.amount)
+export function startGame(bet: number): string {
+  if (budget.amount >= bet) {
+    clearDecks();
+    budget.amount -= bet;
+    game_bet.amount = bet;
+    return giveCards(2, 2);
+  } else {
+    return "You do not have enough budget.";
+  }
 }
 
-$update;
-export function startGame(bet: nat32): Result<string, string> {
-    if (budget.amount >= bet) {
+export function Hit(): string {
+  const dealer_cards: Deck[] = Array.from(dealerStorage.values());
+  const user_cards: Deck[] = Array.from(userStorage.values());
 
-        clearDecks()
+  if (dealer_cards.length >= 2 && user_cards.length >= 2) {
+    return giveCards(0, 1);
+  }
 
-        budget.amount = (budget.amount - bet)
-
-        game_bet.amount = bet
-
-        return giveCards(2, 2)
-    } else {
-        return Result.Err("You have not enough budget")
-    }
+  return "You cannot hit before the game starts.";
 }
 
-$update;
-export function Hit(): Result<string, string> {
-    const dealer_cards: Deck[] = dealerStorage.values()
-    const user_cards: Deck[] = userStorage.values()
+export function Stand(): string {
+  const dealer_cards: Deck[] = Array.from(dealerStorage.values());
+  const user_cards: Deck[] = Array.from(userStorage.values());
 
-    if (dealer_cards.length >= 2 && user_cards.length >= 2) {
-        return giveCards(0, 1)
-    }
+  if (dealer_cards.length >= 2 && user_cards.length >= 2) {
+    return giveCards(1, 0);
+  }
 
-    return Result.Err("you cannot hit before start")
+  return "You cannot stand before the game starts.";
 }
 
-$update;
-export function Stand(): Result<string, string> {
-    const dealer_cards: Deck[] = dealerStorage.values()
-    const user_cards: Deck[] = userStorage.values()
-
-    if (dealer_cards.length >= 2 && user_cards.length >= 2) {
-        return giveCards(1, 0)
-    }
-
-    return Result.Err("you cannot stand before start")
+function generateMessage(el: Deck, i: number, length: number): string {
+  return `${el.suit} ${el.card}${i !== length - 1 ? ", " : ""}`;
 }
 
-function generateMessage(el: Deck, i: nat32, length: nat32): string {
-    return `${el.suit} ${el.card}${i !== length - 1 ? ', ' : ''}`
+export function viewDecks(): string {
+  const dealer_cards: Deck[] = Array.from(dealerStorage.values());
+  const user_cards: Deck[] = Array.from(userStorage.values());
+
+  if (dealer_cards.length > 0 && user_cards.length > 0) {
+    let message: string = `Dealer has ${dealer_cards.length} cards: `;
+
+    dealer_cards.forEach((el, i) => {
+      message += generateMessage(el, i, dealer_cards.length);
+    });
+
+    message += `; User has ${user_cards.length} cards: `;
+
+    user_cards.forEach((el, i) => {
+      message += generateMessage(el, i, user_cards.length);
+    });
+
+    return message;
+  }
+
+  return "There are no cards in the hands.";
 }
 
-// returns user's and dealer's decks
-$query;
-export function viewDecks(): Result<string, string> {
-
-    const dealer_cards: Deck[] = dealerStorage.values()
-    const user_cards: Deck[] = userStorage.values()
-
-    // game started
-    if (dealer_cards.length > 0 && user_cards.length > 0) {
-
-        let message: string = `dealer got ${dealer_cards.length} cards:`
-
-        dealerStorage.values().forEach((el, i) =>
-            message += generateMessage(el, i, dealer_cards.length))
-
-        message += `; user got ${user_cards.length} cards:`
-
-        userStorage.values().forEach((el, i) =>
-            message += generateMessage(el, i, user_cards.length))
-
-        return Result.Ok(message)
-    }
-
-    return Result.Err("no cards in the hands")
-}
-
-// check if card was not added to decks before
 function checkIfUniqueCard(card: string, suit: string): boolean {
-
-    const arr: Deck[] = dealerStorage.values().concat(userStorage.values())
-
-    if (arr.find((el) => el.card === card && el.suit === suit))
-        return false
-
-    return true
+  const arr: Deck[] = Array.from(dealerStorage.values()).concat(Array.from(userStorage.values()));
+  return !arr.some((el) => el.card === card && el.suit === suit);
 }
 
-$update;
 export function clearDecks(): void {
-    dealerStorage.values().forEach((t) => {
-        dealerStorage.remove(t.id);
-    });
-
-    userStorage.values().forEach((t) => {
-        userStorage.remove(t.id);
-    });
-
-    game_bet.amount = 0
+  dealerStorage.clear();
+  userStorage.clear();
+  game_bet.amount = 0;
 }
 
 function generateCard(): Deck {
+  const card: string = cards[Math.floor(Math.random() * cards.length)];
+  const suit: string = suits[Math.floor(Math.random() * suits.length)];
 
-    const card: string = cards[Math.floor(Math.random() * 12)]
-    const suit: string = suits[Math.floor(Math.random() * 3)]
+  if (!checkIfUniqueCard(card, suit)) {
+    return generateCard();
+  }
 
-    // regenerate card if it is not unique
-    if (checkIfUniqueCard(card, suit) === false)
-        return generateCard()
+  const value: number = cards_values[card];
 
-    const value: nat32 = cards_values[card]
+  const card_: Deck = {
+    id: uuidv4(),
+    card,
+    suit,
+    value,
+  };
 
-    const card_: Deck = {
-        id: uuidv4(),
-        card,
-        suit,
-        value
-    }
-
-    return card_;
+  return card_;
 }
 
-// value of dealer's cards
-function dealerValue(): nat32 {
-    return dealerStorage.values().reduce((total, obj) => obj.value + total, 0)
+function dealerValue(): number {
+  return Array.from(dealerStorage.values()).reduce((total, obj) => obj.value + total, 0);
 }
 
-// value of user's cards
-function userValue(): nat32 {
-    return userStorage.values().reduce((total, obj) => obj.value + total, 0)
+function userValue(): number {
+  return Array.from(userStorage.values()).reduce((total, obj) => obj.value + total, 0);
 }
 
-$update;
-export function giveCards(dealer_cards: nat32, user_cards: nat32): Result<string, string> {
+export function giveCards(dealer_cards: number, user_cards: number): string {
+  let message: string = "";
 
-    let message: string = ""
+  if (dealer_cards > 0) {
+    message = `Dealer got ${dealer_cards} card${dealer_cards > 1 ? "s" : ""}: `;
+    for (let i = 0; i < dealer_cards; i++) {
+      const card = generateCard();
+      dealerStorage.set(card.id, card);
+      message += generateMessage(card, i, dealer_cards);
+    }
+  }
 
-    if (dealer_cards > 0) {
+  if (dealer_cards > 0 && user_cards > 0) {
+    message += "; ";
+  }
 
-        message = `dealer got ${dealer_cards} cards:`
+  if (user_cards > 0) {
+    message += `User got ${user_cards} card${user_cards > 1 ? "s" : ""}: `;
+    for (let i = 0; i < user_cards; i++) {
+      const card = generateCard();
+      userStorage.set(card.id, card);
+      message += generateMessage(card, i, user_cards);
+    }
+  }
 
-        for (let i = 0; i < dealer_cards; i++) {
-            const card = generateCard()
+  const user_value = userValue();
+  const dealer_value = dealerValue();
 
-            dealerStorage.insert(card.id, card)
-
-            message += generateMessage(card, i, dealer_cards)
-        }
+  if (dealer_cards === 1 && user_cards === 0) {
+    if (dealer_value > 21 || dealer_value < user_value) {
+      budget.amount += game_bet.amount + game_bet.amount;
+      message += `; User wins ${game_bet.amount}`;
+    } else if (dealer_value === user_value) {
+      budget.amount += game_bet.amount;
+      message += "; Draw";
+    } else {
+      message += "; User loses";
     }
 
-    if (dealer_cards > 0 && user_cards > 0) message += "; "
+    clearDecks();
 
-    if (user_cards > 0) {
+    return message;
+  }
 
-        message = `user got ${user_cards} cards:`
-
-        for (let i = 0; i < user_cards; i++) {
-            const card = generateCard()
-
-            userStorage.insert(card.id, card)
-
-            message += generateMessage(card, i, user_cards)
-        }
+  if (dealer_cards === 0 && user_cards === 1) {
+    if (user_value > 21) {
+      clearDecks();
+      return `${message}; User loses with ${user_value}`;
     }
+  }
 
-    const user_value = userValue()
-    const dealer_value = dealerValue()
+  if (dealer_value > 21) {
+    clearDecks();
+    message += `; User wins ${game_bet.amount}`;
+  } else if (user_value > 21) {
+    clearDecks();
+    message += "; User loses";
+  }
 
-    // user choose to stand
-    if (dealer_cards === 1 && user_cards === 0) {
+  if (user_value === 21 && dealer_value !== 21) {
+    budget.amount += game_bet.amount + game_bet.amount;
+    clearDecks();
+    message += `; User wins ${game_bet.amount}`;
+  } else if (user_value === 21 && dealer_value === 21) {
+    budget.amount += game_bet.amount;
+    clearDecks();
+    message += "; Draw";
+  }
 
-        if (dealer_value > 21 || dealer_value < user_value) {
-            budget.amount += game_bet.amount + (game_bet.amount / 2)
-
-            message += `; User wins ${(game_bet.amount / 2)}`
-        } else if(dealer_value === user_value) {
-            budget.amount += game_bet.amount
-
-            message += `; Draw`
-        } else {
-            message += `; User lose`
-        }
-
-        clearDecks()
-
-        return Result.Ok(message)
-    }
-
-    // user choose to hit
-    if (dealer_cards === 0 && user_cards === 1) {
-        if (user_value > 21) {
-            clearDecks()
-            
-            return Result.Ok(`${message}; User lose with ${user_value}`)
-        }
-    }
-
-    if(dealer_value > 21) {
-        clearDecks()
-
-        message += `; User wins ${(game_bet.amount / 2)}`
-    } else if(user_value > 21) {
-        clearDecks()
-
-        message += `; User lose`
-    }
-
-    if (user_value === 21 && dealer_value !== 21) {
-        budget.amount += game_bet.amount + (game_bet.amount / 2)
-
-        clearDecks()
-
-        message += `; User wins ${(game_bet.amount / 2)}`
-    } else if (user_value === 21 && dealer_value === 21) {
-        budget.amount += game_bet.amount
-
-        clearDecks()
-
-        message += `; Draw`
-    }
-
-    return Result.Ok(message)
+  return message;
 }
 
-// a workaround to make uuid package work with Azle
-globalThis.crypto = {
-    getRandomValues: () => {
-        let array = new Uint8Array(32)
-
-        for (let i = 0; i < array.length; i++) {
-            array[i] = Math.floor(Math.random() * 256)
-        }
-
-        return array
+// Mocking getRandomValues for uuidv4
+global.crypto = {
+  getRandomValues: (array: Uint8Array) => {
+    for (let i = 0; i < array.length; i++) {
+      array[i] = Math.floor(Math.random() * 256);
     }
-}
+    return array;
+  },
+};
